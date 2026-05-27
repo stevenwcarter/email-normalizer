@@ -1,49 +1,52 @@
-//! Provider-aware email normalization. Returns an uppercase canonical
-//! form suitable for unique-constraint enforcement and lookup.
+//! Provider-aware email normalization. Returns a canonical form
+//! (uppercase by default; configurable via [`NormalizerConfig`])
+//! suitable for unique-constraint enforcement and lookup.
 //! Never serialized to the frontend.
 
+#![warn(missing_docs)]
+
+mod config;
 mod rules;
 
 #[cfg(test)]
 mod tests;
 
-fn normalize_str(email: &str) -> Option<String> {
+pub use config::{NormalizerConfig, NormalizerConfigBuilder, OutputCase};
+pub use rules::ProviderRule;
+
+fn normalize_str(email: &str, config: &NormalizerConfig) -> Option<String> {
     let trimmed = email.trim();
     let (local, domain) = trimmed.rsplit_once('@')?;
     if local.is_empty() || domain.is_empty() {
         return None;
     }
 
-    let local = local.to_ascii_lowercase();
-    let domain = domain.to_ascii_lowercase();
+    let mut local = local.to_ascii_lowercase();
+    let mut domain = domain.to_ascii_lowercase();
 
-    // Resolve domain via alias table.
-    let domain = rules::resolve_domain(&domain).to_string();
+    let matched =
+        rules::find_matching_rule(&domain, config.custom_rules(), config.use_built_in_rules());
 
-    // Pick the rule for the resolved domain (or DEFAULT_RULE).
-    let rule = rules::rule_for_domain(&domain);
-
-    // Apply local-part rules in order: + → - → dots.
-    let mut local = local;
-    if rule.strip_plus
-        && let Some(idx) = local.find('+')
-    {
-        local.truncate(idx);
-    }
-    if rule.strip_dash
-        && let Some(idx) = local.find('-')
-    {
-        local.truncate(idx);
-    }
-    if rule.strip_dots {
-        local = local.replace('.', "");
+    if let Some(rule) = matched {
+        if config.resolve_domain_aliases() {
+            domain = rule.canonical_domain().to_string();
+        }
+        if config.apply_provider_rules() {
+            local = rule.transform_local(&local);
+        }
+    } else if config.apply_provider_rules() {
+        local = rules::DEFAULT_RULE.transform_local(&local);
     }
 
     if local.is_empty() {
         return None;
     }
 
-    Some(format!("{local}@{domain}").to_ascii_uppercase())
+    let joined = format!("{local}@{domain}");
+    Some(match config.output_case() {
+        OutputCase::Uppercase => joined.to_ascii_uppercase(),
+        OutputCase::Lowercase => joined,
+    })
 }
 
 /// Raw, user-provided email. No validation; typed wrapper around String.
@@ -52,13 +55,20 @@ fn normalize_str(email: &str) -> Option<String> {
 pub struct Email(String);
 
 impl Email {
+    /// Borrow the underlying raw email string.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
-    /// The only public constructor for `NormalizedEmail`.
+    /// Normalize using the library's default configuration. Equivalent
+    /// to `self.normalize_with(&NormalizerConfig::default())`.
     pub fn normalize(&self) -> Option<NormalizedEmail> {
-        normalize_str(&self.0).map(NormalizedEmail)
+        self.normalize_with(&NormalizerConfig::default())
+    }
+
+    /// Normalize using the given configuration.
+    pub fn normalize_with(&self, config: &NormalizerConfig) -> Option<NormalizedEmail> {
+        normalize_str(&self.0, config).map(NormalizedEmail)
     }
 }
 
@@ -93,6 +103,7 @@ impl AsRef<str> for Email {
 pub struct NormalizedEmail(String);
 
 impl NormalizedEmail {
+    /// Borrow the underlying canonical email string.
     pub fn as_str(&self) -> &str {
         &self.0
     }
