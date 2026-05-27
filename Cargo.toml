@@ -1,0 +1,16 @@
+[package]
+name = "email-normalizer"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Provider-aware email canonicalization (Gmail dots/plus, Yahoo dash, iCloud / Outlook aliases)."
+repository = "https://github.com/stevenwcarter/email-normalizer"
+readme = "README.md"
+keywords = ["email", "normalize", "canonicalize", "deduplication"]
+categories = ["email", "text-processing"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"
