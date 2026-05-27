@@ -2,10 +2,13 @@
 //! form suitable for unique-constraint enforcement and lookup.
 //! Never serialized to the frontend.
 
+mod config;
 mod rules;
 
 #[cfg(test)]
 mod tests;
+
+pub use rules::ProviderRule;
 
 fn normalize_str(email: &str) -> Option<String> {
     let trimmed = email.trim();
@@ -14,29 +17,16 @@ fn normalize_str(email: &str) -> Option<String> {
         return None;
     }
 
-    let local = local.to_ascii_lowercase();
-    let domain = domain.to_ascii_lowercase();
+    let mut local = local.to_ascii_lowercase();
+    let mut domain = domain.to_ascii_lowercase();
 
-    // Resolve domain via alias table.
-    let domain = rules::resolve_domain(&domain).to_string();
+    let matched = rules::find_matching_rule(&domain, &[], true);
 
-    // Pick the rule for the resolved domain (or DEFAULT_RULE).
-    let rule = rules::rule_for_domain(&domain);
-
-    // Apply local-part rules in order: + → - → dots.
-    let mut local = local;
-    if rule.strip_plus
-        && let Some(idx) = local.find('+')
-    {
-        local.truncate(idx);
-    }
-    if rule.strip_dash
-        && let Some(idx) = local.find('-')
-    {
-        local.truncate(idx);
-    }
-    if rule.strip_dots {
-        local = local.replace('.', "");
+    if let Some(rule) = matched {
+        domain = rule.canonical_domain().to_string();
+        local = rule.transform_local(&local);
+    } else {
+        local = rules::DEFAULT_RULE.transform_local(&local);
     }
 
     if local.is_empty() {
