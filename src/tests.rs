@@ -470,3 +470,139 @@ fn apply_provider_rules_false_disables_default_rule_too() {
         Some("FOO+TAG@RANDOMDOMAIN.IO"),
     );
 }
+
+// ── Custom rules: stack + replace ─────────────────────────────────────────────
+
+use crate::ProviderRule;
+
+struct MyCorpRule;
+impl ProviderRule for MyCorpRule {
+    fn matches_domain(&self, d: &str) -> bool {
+        d == "mycorp.com"
+    }
+    fn canonical_domain(&self) -> &str {
+        "mycorp.com"
+    }
+    fn transform_local(&self, local: &str) -> String {
+        // mycorp uses underscore as subaddress separator.
+        local.split('_').next().unwrap_or("").to_string()
+    }
+}
+
+/// A custom rule that *shadows* the built-in gmail rule by matching
+/// gmail.com but applying a different local transform (no-op).
+struct GmailVerbatimRule;
+impl ProviderRule for GmailVerbatimRule {
+    fn matches_domain(&self, d: &str) -> bool {
+        d == "gmail.com" || d == "googlemail.com"
+    }
+    fn canonical_domain(&self) -> &str {
+        "gmail.com"
+    }
+    fn transform_local(&self, local: &str) -> String {
+        local.to_string()
+    }
+}
+
+#[test]
+fn custom_rule_stacks_on_built_ins() {
+    let cfg = NormalizerConfig::builder().add_rule(MyCorpRule).build();
+    // Custom rule handles mycorp.com (built-ins don't know about it).
+    assert_eq!(
+        Email::from("alice_promo@mycorp.com")
+            .normalize_with(&cfg)
+            .as_ref()
+            .map(|n| n.as_str()),
+        Some("ALICE@MYCORP.COM"),
+    );
+    // Built-ins still work alongside the custom rule.
+    assert_eq!(
+        Email::from("foo+bar@gmail.com")
+            .normalize_with(&cfg)
+            .as_ref()
+            .map(|n| n.as_str()),
+        Some("FOO@GMAIL.COM"),
+    );
+}
+
+#[test]
+fn custom_rule_shadows_built_in() {
+    let cfg = NormalizerConfig::builder()
+        .add_rule(GmailVerbatimRule)
+        .build();
+    // GmailVerbatimRule is checked before the built-in gmail rule, so
+    // plus and dots are preserved.
+    assert_eq!(
+        Email::from("s.t.e.v.e+x@gmail.com")
+            .normalize_with(&cfg)
+            .as_ref()
+            .map(|n| n.as_str()),
+        Some("S.T.E.V.E+X@GMAIL.COM"),
+    );
+}
+
+#[test]
+fn use_built_in_rules_false_with_only_custom_rules() {
+    // Replace mode: built-ins off, only MyCorpRule is in play.
+    let cfg = NormalizerConfig::builder()
+        .use_built_in_rules(false)
+        .add_rule(MyCorpRule)
+        .build();
+    // Mycorp still works (the custom rule matches).
+    assert_eq!(
+        Email::from("alice_promo@mycorp.com")
+            .normalize_with(&cfg)
+            .as_ref()
+            .map(|n| n.as_str()),
+        Some("ALICE@MYCORP.COM"),
+    );
+    // Gmail no longer gets its built-in dot-strip treatment: nothing
+    // matches, DEFAULT_RULE applies (no dot-strip, just plus-strip).
+    // Dots survive because the gmail built-in is bypassed; if it
+    // weren't, this would be `FOO@GMAIL.COM`.
+    assert_eq!(
+        Email::from("f.o.o@gmail.com")
+            .normalize_with(&cfg)
+            .as_ref()
+            .map(|n| n.as_str()),
+        Some("F.O.O@GMAIL.COM"),
+    );
+    // googlemail.com no longer maps to gmail.com.
+    assert_eq!(
+        Email::from("foo@googlemail.com")
+            .normalize_with(&cfg)
+            .as_ref()
+            .map(|n| n.as_str()),
+        Some("FOO@GOOGLEMAIL.COM"),
+    );
+}
+
+#[test]
+fn use_built_in_rules_false_with_no_custom_rules_falls_through_to_default() {
+    // No rules at all — only DEFAULT_RULE applies (strips plus).
+    let cfg = NormalizerConfig::builder()
+        .use_built_in_rules(false)
+        .build();
+    assert_eq!(
+        Email::from("s.t.e.v.e+x@gmail.com")
+            .normalize_with(&cfg)
+            .as_ref()
+            .map(|n| n.as_str()),
+        Some("S.T.E.V.E@GMAIL.COM"),
+    );
+}
+
+#[test]
+fn idempotency_holds_with_custom_rule_and_lowercase_output() {
+    let cfg = NormalizerConfig::builder()
+        .output_case(OutputCase::Lowercase)
+        .add_rule(MyCorpRule)
+        .build();
+    let original = Email::from("Alice_Promo@MyCorp.com");
+    let once = original.normalize_with(&cfg).expect("first normalize");
+    let twice = Email::from(once.as_str())
+        .normalize_with(&cfg)
+        .expect("second normalize");
+    assert_eq!(once.as_str(), twice.as_str());
+    assert_eq!(once.as_str(), "alice@mycorp.com");
+}

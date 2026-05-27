@@ -27,8 +27,10 @@ pub trait ProviderRule: Send + Sync + 'static {
     /// `matches_domain` returned true.
     fn canonical_domain(&self) -> &str;
 
-    /// Transform the local part. Return value of `""` causes the caller
-    /// to reject the whole email (the caller checks for emptiness).
+    /// Transform the local part. `local` arrives already lowercased
+    /// (consistent with the `domain` parameter to `matches_domain`).
+    /// Return value of `""` causes the caller to reject the whole
+    /// email (the caller checks for emptiness).
     fn transform_local(&self, local: &str) -> String;
 }
 

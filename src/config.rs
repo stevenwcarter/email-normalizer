@@ -25,7 +25,6 @@ pub struct NormalizerConfig {
     output_case: OutputCase,
     apply_provider_rules: bool,
     resolve_domain_aliases: bool,
-    #[allow(dead_code)]
     custom_rules: Vec<Arc<dyn ProviderRule>>,
     use_built_in_rules: bool,
 }
@@ -62,7 +61,6 @@ impl NormalizerConfig {
         self.resolve_domain_aliases
     }
 
-    #[allow(dead_code)]
     pub(crate) fn custom_rules(&self) -> &[Arc<dyn ProviderRule>] {
         &self.custom_rules
     }
