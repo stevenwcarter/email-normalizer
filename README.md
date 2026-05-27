@@ -6,8 +6,9 @@ subaddressing, Yahoo dash subaddresses, iCloud and Outlook alias domains — so
 the output is a stable key suitable for unique-constraint enforcement,
 deduplication, and lookup.
 
-The canonical form is uppercase and **not** a deliverable address. Never display
-it to users; never use it as a `mailto:` target.
+The canonical form is uppercase by default (configurable — see below) and
+**not** a deliverable address. Never display it to users; never use it as a
+`mailto:` target.
 
 ## Install
 
@@ -31,6 +32,33 @@ assert_eq!(normalized.as_str(), "STEVE@GMAIL.COM");
 `Email::normalize` returns `None` for inputs with no `@`, empty local or
 domain parts, or where stripping a subaddress leaves an empty local part.
 
+### Configuring behavior
+
+For non-default behavior, build a `NormalizerConfig` and call
+`Email::normalize_with`:
+
+```rust
+use email_normalizer::{Email, NormalizerConfig, OutputCase, ProviderRule};
+
+// Lowercase output instead of the default uppercase.
+let cfg = NormalizerConfig::builder()
+    .output_case(OutputCase::Lowercase)
+    .build();
+let n = Email::from("Steve+work@Gmail.com").normalize_with(&cfg).unwrap();
+assert_eq!(n.as_str(), "steve@gmail.com");
+```
+
+Other toggles on `NormalizerConfig::builder()`:
+
+- `apply_provider_rules(false)` — disable subaddress stripping (gmail dot/plus,
+  yahoo dash) and the default plus-strip fallback.
+- `resolve_domain_aliases(false)` — keep alias domains like `googlemail.com`
+  instead of rewriting to `gmail.com`.
+- `add_rule(my_rule)` — plug in your own rule (implements the public
+  `ProviderRule` trait). Custom rules are checked before built-ins.
+- `use_built_in_rules(false)` — combined with `add_rule`, replaces the
+  built-in rules entirely.
+
 ## Rules
 
 | Provider | `+`  | `-`  | `.`  | Aliases folded into canonical domain |
@@ -41,7 +69,8 @@ domain parts, or where stripping a subaddress leaves an empty local part.
 | Yahoo    | keep  | strip | keep | regional `yahoo.*`, `ymail.com`, `rocketmail.com` → `yahoo.com` |
 | Default  | strip | keep | keep | domain unchanged |
 
-Domain matching is case-insensitive. The output is always uppercase.
+Domain matching is case-insensitive. The output is uppercase by default;
+set `OutputCase::Lowercase` on the config to override.
 
 ## Caveats
 

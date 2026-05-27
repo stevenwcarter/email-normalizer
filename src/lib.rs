@@ -1,5 +1,6 @@
-//! Provider-aware email normalization. Returns an uppercase canonical
-//! form suitable for unique-constraint enforcement and lookup.
+//! Provider-aware email normalization. Returns a canonical form
+//! (uppercase by default; configurable via [`NormalizerConfig`])
+//! suitable for unique-constraint enforcement and lookup.
 //! Never serialized to the frontend.
 
 mod config;
