@@ -12,14 +12,27 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # Baseline 74.29% line coverage on 2026-05-27 (see
+      # docs/superpowers/specs/2026-05-27-ci-coverage-design.md).
+      # 71 gives ~3.3-point cushion; bump in lockstep with future
+      # coverage pushes.
+      COVERAGE_THRESHOLD: 71
+      # Job-level so step-level `if: env.CODECOV_TOKEN != ''` evaluates.
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt, clippy, llvm-tools-preview
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
 
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
@@ -27,8 +40,73 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --all-targets -- -D warnings
 
-      - name: cargo test
-        run: cargo test
+      - name: Clean stale coverage data
+        run: cargo llvm-cov clean --workspace
+
+      - name: Collect coverage (no report yet)
+        run: cargo llvm-cov --no-report --workspace
+
+      - name: Emit lcov
+        run: cargo llvm-cov report --lcov --output-path lcov.info
+
+      - name: Emit cobertura
+        run: cargo llvm-cov report --cobertura --output-path cobertura.xml
+
+      - name: Emit codecov json
+        run: cargo llvm-cov report --codecov --output-path codecov.json
+
+      - name: Emit HTML report
+        run: cargo llvm-cov report --html --output-dir coverage-html
+
+      - name: Enforce threshold
+        run: cargo llvm-cov report --fail-under-lines "$COVERAGE_THRESHOLD"
+
+      - name: Write coverage summary to GHA step summary
+        if: always()
+        run: |
+          {
+            echo '## Coverage report'
+            echo ''
+            echo 'Threshold: ≥ '"${COVERAGE_THRESHOLD}"'% line coverage'
+            echo ''
+            echo '```'
+            cargo llvm-cov report
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html-report
+          # cargo-llvm-cov puts the report at <output-dir>/html/, so
+          # upload the inner dir to keep index.html at the artifact root.
+          path: coverage-html/html/
+          retention-days: 30
+
+      - name: Upload lcov
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: lcov.info
+          retention-days: 30
+
+      - name: Upload cobertura
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-cobertura
+          path: cobertura.xml
+          retention-days: 30
+
+      - name: Upload to codecov.io
+        if: env.CODECOV_TOKEN != ''
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./codecov.json
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
       - name: cargo doc
         env:
