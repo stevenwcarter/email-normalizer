@@ -8,6 +8,7 @@ mod rules;
 #[cfg(test)]
 mod tests;
 
+pub use config::{NormalizerConfig, NormalizerConfigBuilder, OutputCase};
 pub use rules::ProviderRule;
 
 fn normalize_str(email: &str) -> Option<String> {
