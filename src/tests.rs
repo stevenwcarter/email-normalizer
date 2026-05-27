@@ -380,3 +380,93 @@ fn default_config_is_constructible() {
     let _via_default: NormalizerConfig = NormalizerConfig::default();
     let _via_builder: NormalizerConfig = NormalizerConfig::builder().build();
 }
+
+// ── normalize_with: toggle options ────────────────────────────────────────────
+
+#[test]
+fn default_config_matches_legacy_normalize() {
+    // normalize_with(&NormalizerConfig::default()) must produce the
+    // exact same output as the historical Email::normalize() for a
+    // representative set of inputs.
+    let cases = [
+        "Foo@randomdomain.io",
+        "foo-bar@Yahoo.CO.UK",
+        "FOO@HOTMAIL.COM",
+        "user@me.com",
+        "S.T.E.V.E+x@GoogleMail.com",
+    ];
+    let cfg = NormalizerConfig::default();
+    for original in cases {
+        let legacy = Email::from(original).normalize();
+        let via_with = Email::from(original).normalize_with(&cfg);
+        assert_eq!(
+            legacy.as_ref().map(|n| n.as_str()),
+            via_with.as_ref().map(|n| n.as_str()),
+            "mismatch for {original:?}"
+        );
+    }
+}
+
+#[test]
+fn output_case_lowercase_produces_lowercase() {
+    let cfg = NormalizerConfig::builder()
+        .output_case(OutputCase::Lowercase)
+        .build();
+    assert_eq!(
+        Email::from("S.T.E.V.E+x@GoogleMail.com")
+            .normalize_with(&cfg)
+            .as_ref()
+            .map(|n| n.as_str()),
+        Some("steve@gmail.com"),
+    );
+}
+
+#[test]
+fn apply_provider_rules_false_keeps_local_intact() {
+    // Gmail input: rule would normally strip plus and dots; with the
+    // toggle off, the local part stays as the lowercased original.
+    // Alias resolution still runs.
+    let cfg = NormalizerConfig::builder()
+        .apply_provider_rules(false)
+        .build();
+    assert_eq!(
+        Email::from("s.t.e.v.e+x@googlemail.com")
+            .normalize_with(&cfg)
+            .as_ref()
+            .map(|n| n.as_str()),
+        Some("S.T.E.V.E+X@GMAIL.COM"),
+    );
+}
+
+#[test]
+fn resolve_domain_aliases_false_keeps_alias_domain() {
+    let cfg = NormalizerConfig::builder()
+        .resolve_domain_aliases(false)
+        .build();
+    // `f.o.o` proves the Gmail rule's local transform still runs (dots
+    // are stripped) while the alias-resolution step is suppressed
+    // (domain kept as `googlemail.com`).
+    assert_eq!(
+        Email::from("f.o.o@googlemail.com")
+            .normalize_with(&cfg)
+            .as_ref()
+            .map(|n| n.as_str()),
+        Some("FOO@GOOGLEMAIL.COM"),
+    );
+}
+
+#[test]
+fn apply_provider_rules_false_disables_default_rule_too() {
+    // Unmatched domain ('randomdomain.io'): default rule would normally
+    // strip plus. With the toggle off, plus is kept.
+    let cfg = NormalizerConfig::builder()
+        .apply_provider_rules(false)
+        .build();
+    assert_eq!(
+        Email::from("foo+tag@randomdomain.io")
+            .normalize_with(&cfg)
+            .as_ref()
+            .map(|n| n.as_str()),
+        Some("FOO+TAG@RANDOMDOMAIN.IO"),
+    );
+}

@@ -11,7 +11,7 @@ mod tests;
 pub use config::{NormalizerConfig, NormalizerConfigBuilder, OutputCase};
 pub use rules::ProviderRule;
 
-fn normalize_str(email: &str) -> Option<String> {
+fn normalize_str(email: &str, config: &NormalizerConfig) -> Option<String> {
     let trimmed = email.trim();
     let (local, domain) = trimmed.rsplit_once('@')?;
     if local.is_empty() || domain.is_empty() {
@@ -21,12 +21,16 @@ fn normalize_str(email: &str) -> Option<String> {
     let mut local = local.to_ascii_lowercase();
     let mut domain = domain.to_ascii_lowercase();
 
-    let matched = rules::find_matching_rule(&domain, &[], true);
+    let matched = rules::find_matching_rule(&domain, &[], config.use_built_in_rules());
 
     if let Some(rule) = matched {
-        domain = rule.canonical_domain().to_string();
-        local = rule.transform_local(&local);
-    } else {
+        if config.resolve_domain_aliases() {
+            domain = rule.canonical_domain().to_string();
+        }
+        if config.apply_provider_rules() {
+            local = rule.transform_local(&local);
+        }
+    } else if config.apply_provider_rules() {
         local = rules::DEFAULT_RULE.transform_local(&local);
     }
 
@@ -34,7 +38,11 @@ fn normalize_str(email: &str) -> Option<String> {
         return None;
     }
 
-    Some(format!("{local}@{domain}").to_ascii_uppercase())
+    let joined = format!("{local}@{domain}");
+    Some(match config.output_case() {
+        OutputCase::Uppercase => joined.to_ascii_uppercase(),
+        OutputCase::Lowercase => joined,
+    })
 }
 
 /// Raw, user-provided email. No validation; typed wrapper around String.
@@ -47,9 +55,15 @@ impl Email {
         &self.0
     }
 
-    /// The only public constructor for `NormalizedEmail`.
+    /// Normalize using the library's default configuration. Equivalent
+    /// to `self.normalize_with(&NormalizerConfig::default())`.
     pub fn normalize(&self) -> Option<NormalizedEmail> {
-        normalize_str(&self.0).map(NormalizedEmail)
+        self.normalize_with(&NormalizerConfig::default())
+    }
+
+    /// Normalize using the given configuration.
+    pub fn normalize_with(&self, config: &NormalizerConfig) -> Option<NormalizedEmail> {
+        normalize_str(&self.0, config).map(NormalizedEmail)
     }
 }
 

@@ -21,11 +21,11 @@ pub enum OutputCase {
 /// `NormalizerConfig::builder()` or call `NormalizerConfig::default()`
 /// for the library's historical behavior.
 #[derive(Clone)]
-#[allow(dead_code)]
 pub struct NormalizerConfig {
     output_case: OutputCase,
     apply_provider_rules: bool,
     resolve_domain_aliases: bool,
+    #[allow(dead_code)]
     custom_rules: Vec<Arc<dyn ProviderRule>>,
     use_built_in_rules: bool,
 }
@@ -42,7 +42,6 @@ impl Default for NormalizerConfig {
     }
 }
 
-#[allow(dead_code)]
 impl NormalizerConfig {
     /// Start building a `NormalizerConfig`. All options default to the
     /// library's historical behavior — call setters only for what you
@@ -63,6 +62,7 @@ impl NormalizerConfig {
         self.resolve_domain_aliases
     }
 
+    #[allow(dead_code)]
     pub(crate) fn custom_rules(&self) -> &[Arc<dyn ProviderRule>] {
         &self.custom_rules
     }
