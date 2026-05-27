@@ -22,11 +22,8 @@ fn normalize_str(email: &str, config: &NormalizerConfig) -> Option<String> {
     let mut local = local.to_ascii_lowercase();
     let mut domain = domain.to_ascii_lowercase();
 
-    let matched = rules::find_matching_rule(
-        &domain,
-        config.custom_rules(),
-        config.use_built_in_rules(),
-    );
+    let matched =
+        rules::find_matching_rule(&domain, config.custom_rules(), config.use_built_in_rules());
 
     if let Some(rule) = matched {
         if config.resolve_domain_aliases() {
