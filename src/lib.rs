@@ -3,6 +3,8 @@
 //! suitable for unique-constraint enforcement and lookup.
 //! Never serialized to the frontend.
 
+#![warn(missing_docs)]
+
 mod config;
 mod rules;
 
@@ -53,6 +55,7 @@ fn normalize_str(email: &str, config: &NormalizerConfig) -> Option<String> {
 pub struct Email(String);
 
 impl Email {
+    /// Borrow the underlying raw email string.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -100,6 +103,7 @@ impl AsRef<str> for Email {
 pub struct NormalizedEmail(String);
 
 impl NormalizedEmail {
+    /// Borrow the underlying canonical email string.
     pub fn as_str(&self) -> &str {
         &self.0
     }
